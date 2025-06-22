@@ -1,16 +1,25 @@
 FROM node:18-alpine
 
+# Установка зависимостей для компиляции native модулей
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    postgresql-dev \
+    libc6-compat
+
 WORKDIR /app
 
-# Установка зависимостей
+# Копирование package.json
 COPY package*.json ./
-RUN npm install --production
+
+# Установка зависимостей
+RUN npm install --omit=dev
 
 # Копирование исходного кода
 COPY . .
 
 # Сборка приложения
-RUN npm install
 RUN npm run build
 
 # Создание пользователя для безопасности
@@ -23,6 +32,6 @@ USER nextjs
 
 EXPOSE 3000
 
-ENV NODE_ENV production
+ENV NODE_ENV=production
 
 CMD ["npm", "start"]
