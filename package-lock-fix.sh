@@ -1,3 +1,14 @@
+#!/bin/bash
+
+# Скрипт для исправления проблемы с package-lock.json
+
+echo "Исправление проблемы с Docker сборкой..."
+
+# Создание package-lock.json
+npm install
+
+# Обновление Dockerfile
+cat > Dockerfile << 'EOF'
 FROM node:18-alpine
 
 WORKDIR /app
@@ -10,7 +21,6 @@ RUN npm install --production
 COPY . .
 
 # Сборка приложения
-RUN npm install
 RUN npm run build
 
 # Создание пользователя для безопасности
@@ -26,3 +36,7 @@ EXPOSE 3000
 ENV NODE_ENV production
 
 CMD ["npm", "start"]
+EOF
+
+echo "Dockerfile обновлен!"
+echo "Теперь запустите: docker-compose up -d --build"

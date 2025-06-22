@@ -189,7 +189,7 @@ pm2 startup
 sudo nano /etc/nginx/sites-available/apelsin
 \`\`\`
 
-```nginx
+\`\`\`nginx
 server {
     listen 80;
     server_name yourdomain.com www.yourdomain.com;

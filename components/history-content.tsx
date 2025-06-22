@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -21,54 +21,27 @@ interface HistoryOrder {
 
 export function HistoryContent() {
   const { t } = useLanguage()
-
   const [searchPhone, setSearchPhone] = useState("")
+  const [historyOrders, setHistoryOrders] = useState<HistoryOrder[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const historyOrders: HistoryOrder[] = [
-    {
-      id: "098",
-      customer: "Айдар Нурланов",
-      phone: "+7 777 123 45 67",
-      total: 15500,
-      payment: "Kaspi Bank",
-      status: "completed",
-      date: "2024-01-15",
-      items: [
-        { name: "Хлеб белый", quantity: 2, price: 300 },
-        { name: "Молоко 1л", quantity: 3, price: 500 },
-      ],
-    },
-    {
-      id: "097",
-      customer: "Айдар Нурланов",
-      phone: "+7 777 123 45 67",
-      total: 8750,
-      payment: "Halyk Bank",
-      status: "completed",
-      date: "2024-01-10",
-      items: [{ name: "Масло подсолнечное", quantity: 1, price: 600 }],
-    },
-    {
-      id: "096",
-      customer: "Мария Петрова",
-      phone: "+7 777 987 65 43",
-      total: 12300,
-      payment: "Наличные",
-      status: "cancelled",
-      date: "2024-01-08",
-      items: [{ name: "Мясо говядина", quantity: 1, price: 2500 }],
-    },
-    {
-      id: "095",
-      customer: "Ержан Касымов",
-      phone: "+7 777 555 44 33",
-      total: 5600,
-      payment: "Kaspi Bank",
-      status: "completed",
-      date: "2024-01-05",
-      items: [{ name: "Картофель 1кг", quantity: 3, price: 200 }],
-    },
-  ]
+  useEffect(() => {
+    fetchHistory()
+  }, [])
+
+  const fetchHistory = async () => {
+    try {
+      const response = await fetch("/api/history")
+      if (response.ok) {
+        const data = await response.json()
+        setHistoryOrders(data.orders)
+      }
+    } catch (error) {
+      console.error("Ошибка загрузки истории:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const filteredOrders = historyOrders.filter(
     (order) => order.phone.includes(searchPhone) || order.customer.toLowerCase().includes(searchPhone.toLowerCase()),
@@ -92,9 +65,20 @@ export function HistoryContent() {
     return <Badge className={`${colors[payment]} text-white`}>{payment}</Badge>
   }
 
+  if (loading) {
+    return (
+      <div className="p-6">
+        <div className="animate-pulse space-y-6">
+          <div className="h-8 bg-gray-700 rounded w-64"></div>
+          <div className="h-96 bg-gray-700 rounded"></div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="p-6">
-      <h1 className="text-3xl font-bold mb-6 glow-text">{t("nav.history")}</h1>
+      <h1 className="text-3xl font-bold mb-6 glow-text">История заказов</h1>
 
       <div className="mb-6">
         <div className="relative max-w-md">
@@ -103,12 +87,12 @@ export function HistoryContent() {
             placeholder="Поиск по телефону или имени..."
             value={searchPhone}
             onChange={(e) => setSearchPhone(e.target.value)}
-            className="pl-10 glow-effect"
+            className="pl-10 elegant-input"
           />
         </div>
       </div>
 
-      <Card className="glow-effect">
+      <Card className="elegant-card">
         <CardHeader>
           <CardTitle>История заказов ({filteredOrders.length})</CardTitle>
         </CardHeader>
@@ -149,6 +133,11 @@ export function HistoryContent() {
               ))}
             </TableBody>
           </Table>
+          {filteredOrders.length === 0 && (
+            <div className="text-center py-8 text-muted-foreground">
+              {historyOrders.length === 0 ? "Нет истории заказов" : "Заказы не найдены"}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

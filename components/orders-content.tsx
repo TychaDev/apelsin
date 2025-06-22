@@ -1,10 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useLanguage } from "@/components/language-provider"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { useToast } from "@/hooks/use-toast"
 
 interface Order {
   id: string
@@ -18,58 +19,61 @@ interface Order {
 
 export function OrdersContent() {
   const { t } = useLanguage()
+  const { toast } = useToast()
+  const [orders, setOrders] = useState<Order[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const [orders, setOrders] = useState<Order[]>([
-    {
-      id: "001",
-      customer: "Айдар Нурланов",
-      phone: "+7 777 123 45 67",
-      total: 15500,
-      payment: "Kaspi Bank",
-      status: "assembly",
-      items: [
-        { name: "Хлеб белый", quantity: 2, price: 300 },
-        { name: "Молоко 1л", quantity: 3, price: 500 },
-        { name: "Яйца С1 10шт", quantity: 1, price: 600 },
-      ],
-    },
-    {
-      id: "002",
-      customer: "Мария Петрова",
-      phone: "+7 777 987 65 43",
-      total: 8750,
-      payment: "Halyk Bank",
-      status: "waiting",
-      items: [
-        { name: "Масло подсолнечное", quantity: 1, price: 600 },
-        { name: "Сахар 1кг", quantity: 2, price: 500 },
-      ],
-    },
-    {
-      id: "003",
-      customer: "Ержан Касымов",
-      phone: "+7 777 555 44 33",
-      total: 12300,
-      payment: "Наличные",
-      status: "delivery",
-      items: [
-        { name: "Мясо говядина", quantity: 1, price: 2500 },
-        { name: "Картофель 1кг", quantity: 3, price: 200 },
-      ],
-    },
-  ])
+  useEffect(() => {
+    fetchOrders()
+  }, [])
 
-  const updateOrderStatus = (orderId: string, newStatus: Order["status"]) => {
-    setOrders(orders.map((order) => (order.id === orderId ? { ...order, status: newStatus } : order)))
+  const fetchOrders = async () => {
+    try {
+      const response = await fetch("/api/orders")
+      if (response.ok) {
+        const data = await response.json()
+        setOrders(data.orders)
+      }
+    } catch (error) {
+      console.error("Ошибка загрузки заказов:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const updateOrderStatus = async (orderId: string, newStatus: Order["status"]) => {
+    try {
+      const response = await fetch("/api/orders", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ orderId, status: newStatus }),
+      })
+
+      if (response.ok) {
+        setOrders(orders.map((order) => (order.id === orderId ? { ...order, status: newStatus } : order)))
+        toast({
+          title: "Успешно",
+          description: "Статус заказа обновлен",
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "Ошибка",
+        description: "Не удалось обновить статус заказа",
+        variant: "destructive",
+      })
+    }
   }
 
   const getStatusBadge = (status: Order["status"]) => {
     const statusConfig = {
-      assembly: { label: t("orders.status.assembly"), className: "status-badge status-assembly" },
-      waiting: { label: t("orders.status.waiting"), className: "status-badge status-waiting" },
-      delivery: { label: t("orders.status.delivery"), className: "status-badge status-delivery" },
-      completed: { label: t("orders.status.completed"), className: "status-badge status-completed" },
-      cancelled: { label: t("orders.status.cancelled"), className: "status-badge status-cancelled" },
+      assembly: { label: "В сборке", className: "status-badge status-assembly" },
+      waiting: { label: "Ожидание курьера", className: "status-badge status-waiting" },
+      delivery: { label: "Курьер в пути", className: "status-badge status-delivery" },
+      completed: { label: "Выполнен", className: "status-badge status-completed" },
+      cancelled: { label: "Отменен", className: "status-badge status-cancelled" },
     }
 
     const config = statusConfig[status]
@@ -86,25 +90,38 @@ export function OrdersContent() {
     return <span className={paymentConfig[payment]}>{payment}</span>
   }
 
+  if (loading) {
+    return (
+      <div className="p-6">
+        <div className="animate-pulse space-y-6">
+          <div className="h-8 bg-gray-700 rounded w-64"></div>
+          <div className="h-96 bg-gray-700 rounded"></div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="p-6">
-      <h1 className="text-3xl font-bold mb-6 glow-text">{t("orders.title")}</h1>
+      <h1 className="text-3xl font-bold mb-6 glow-text">Управление заказами</h1>
 
       <Card className="elegant-card">
         <CardHeader>
-          <CardTitle>Активные заказы</CardTitle>
+          <CardTitle>
+            Активные заказы ({orders.filter((order) => !["completed", "cancelled"].includes(order.status)).length})
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{t("orders.id")}</TableHead>
-                <TableHead>{t("orders.customer")}</TableHead>
-                <TableHead>{t("orders.phone")}</TableHead>
-                <TableHead>{t("orders.total")}</TableHead>
-                <TableHead>{t("orders.payment")}</TableHead>
-                <TableHead>{t("orders.status")}</TableHead>
-                <TableHead>{t("orders.actions")}</TableHead>
+                <TableHead>ID заказа</TableHead>
+                <TableHead>Клиент</TableHead>
+                <TableHead>Телефон</TableHead>
+                <TableHead>Сумма</TableHead>
+                <TableHead>Оплата</TableHead>
+                <TableHead>Статус</TableHead>
+                <TableHead>Действия</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -127,11 +144,11 @@ export function OrdersContent() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="assembly">{t("orders.status.assembly")}</SelectItem>
-                          <SelectItem value="waiting">{t("orders.status.waiting")}</SelectItem>
-                          <SelectItem value="delivery">{t("orders.status.delivery")}</SelectItem>
-                          <SelectItem value="completed">{t("orders.status.completed")}</SelectItem>
-                          <SelectItem value="cancelled">{t("orders.status.cancelled")}</SelectItem>
+                          <SelectItem value="assembly">В сборке</SelectItem>
+                          <SelectItem value="waiting">Ожидание курьера</SelectItem>
+                          <SelectItem value="delivery">Курьер в пути</SelectItem>
+                          <SelectItem value="completed">Выполнен</SelectItem>
+                          <SelectItem value="cancelled">Отменен</SelectItem>
                         </SelectContent>
                       </Select>
                     </TableCell>
@@ -139,6 +156,9 @@ export function OrdersContent() {
                 ))}
             </TableBody>
           </Table>
+          {orders.filter((order) => !["completed", "cancelled"].includes(order.status)).length === 0 && (
+            <div className="text-center py-8 text-muted-foreground">Нет активных заказов</div>
+          )}
         </CardContent>
       </Card>
     </div>
