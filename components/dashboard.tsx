@@ -33,8 +33,8 @@ export function Dashboard({ onLogout }: DashboardProps) {
   }
 
   return (
-    <div className="flex h-screen">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={onLogout} />
+    <div className="flex h-screen bg-gray-900">
+      <Sidebar activeTab={activeTab} onTabChange={setActiveTab} onLogout={onLogout} />
       <main className="flex-1 overflow-auto">{renderContent()}</main>
     </div>
   )
