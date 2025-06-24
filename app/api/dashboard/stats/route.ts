@@ -1,56 +1,98 @@
 import { NextResponse } from "next/server"
-import { query } from "@/lib/database"
+import { Pool } from "pg"
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+})
 
 export async function GET() {
   try {
-    // Получаем статистику
-    const totalOrdersResult = await query("SELECT COUNT(*) as count FROM orders")
-    const activeOrdersResult = await query(
-      "SELECT COUNT(*) as count FROM orders WHERE status NOT IN ('completed', 'cancelled')",
-    )
-    const totalProductsResult = await query("SELECT COUNT(*) as count FROM products")
-    const revenueResult = await query(`
-      SELECT COALESCE(SUM(total_amount), 0) as revenue 
-      FROM orders 
-      WHERE status = 'completed' 
-      AND created_at >= date_trunc('month', CURRENT_DATE)
-    `)
+    console.log("=== GET /api/dashboard/stats ===")
 
-    // Последние заказы
-    const recentOrdersResult = await query(`
-      SELECT * FROM orders 
-      WHERE status NOT IN ('completed', 'cancelled')
-      ORDER BY created_at DESC 
-      LIMIT 5
-    `)
+    const client = await pool.connect()
 
-    // Популярные товары
-    const popularProductsResult = await query(`
-      SELECT 
-        p.name,
-        SUM(oi.quantity) as sales,
-        SUM(oi.total) as revenue
-      FROM order_items oi
-      JOIN products p ON p.sku = oi.product_id::text
-      JOIN orders o ON o.id = oi.order_id
-      WHERE o.created_at >= CURRENT_DATE - INTERVAL '7 days'
-      GROUP BY p.name
-      ORDER BY sales DESC
-      LIMIT 5
-    `)
+    try {
+      // Получаем статистику заказов
+      const ordersResult = await client.query(`
+        SELECT 
+          COUNT(*) as total_orders,
+          COUNT(CASE WHEN status IN ('pending', 'processing', 'ready') THEN 1 END) as active_orders,
+          COALESCE(SUM(CASE WHEN status = 'completed' THEN total_amount ELSE 0 END), 0) as total_revenue
+        FROM orders
+      `)
 
-    return NextResponse.json({
-      stats: {
-        totalOrders: totalOrdersResult.rows[0].count,
-        activeOrders: activeOrdersResult.rows[0].count,
-        totalProducts: totalProductsResult.rows[0].count,
-        revenue: revenueResult.rows[0].revenue,
-      },
-      recentOrders: recentOrdersResult.rows,
-      popularProducts: popularProductsResult.rows,
-    })
+      // Получаем статистику товаров
+      const productsResult = await client.query(`
+        SELECT 
+          COUNT(*) as total_products,
+          COALESCE(SUM(stock), 0) as total_stock,
+          COUNT(CASE WHEN stock > 0 THEN 1 END) as in_stock_products,
+          COUNT(CASE WHEN stock = 0 THEN 1 END) as out_of_stock_products
+        FROM products
+      `)
+
+      // Получаем последние импорты
+      const importsResult = await client.query(`
+        SELECT 
+          COUNT(*) as total_imports,
+          COALESCE(SUM(products_imported), 0) as total_imported_products,
+          MAX(created_at) as last_import
+        FROM import_logs
+        WHERE created_at >= NOW() - INTERVAL '24 hours'
+      `)
+
+      const orderStats = ordersResult.rows[0]
+      const productStats = productsResult.rows[0]
+      const importStats = importsResult.rows[0]
+
+      const stats = {
+        // Заказы
+        totalOrders: Number.parseInt(orderStats.total_orders) || 0,
+        activeOrders: Number.parseInt(orderStats.active_orders) || 0,
+        totalRevenue: Number.parseFloat(orderStats.total_revenue) || 0,
+
+        // Товары
+        totalProducts: Number.parseInt(productStats.total_products) || 0,
+        totalStock: Number.parseInt(productStats.total_stock) || 0,
+        inStockProducts: Number.parseInt(productStats.in_stock_products) || 0,
+        outOfStockProducts: Number.parseInt(productStats.out_of_stock_products) || 0,
+
+        // Импорты
+        totalImports: Number.parseInt(importStats.total_imports) || 0,
+        totalImportedProducts: Number.parseInt(importStats.total_imported_products) || 0,
+        lastImport: importStats.last_import,
+      }
+
+      console.log("Dashboard stats:", stats)
+
+      return NextResponse.json({
+        success: true,
+        stats,
+      })
+    } finally {
+      client.release()
+    }
   } catch (error) {
-    console.error("Get dashboard stats error:", error)
-    return NextResponse.json({ error: "Ошибка получения статистики" }, { status: 500 })
+    console.error("Dashboard stats error:", error)
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: (error as Error).message,
+        stats: {
+          totalOrders: 0,
+          activeOrders: 0,
+          totalRevenue: 0,
+          totalProducts: 0,
+          totalStock: 0,
+          inStockProducts: 0,
+          outOfStockProducts: 0,
+          totalImports: 0,
+          totalImportedProducts: 0,
+          lastImport: null,
+        },
+      },
+      { status: 500 },
+    )
   }
 }

@@ -1,72 +1,167 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { query } from "@/lib/database"
+import { Pool } from "pg"
+
+// Подключение к базе данных
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+})
+
+// Простой XML парсер
+function parseXML(xmlContent: string) {
+  const products = []
+
+  try {
+    console.log("Начинаем парсинг XML...")
+
+    // Ищем все теги <offer>
+    const offerMatches = xmlContent.match(/<offer[^>]*>[\s\S]*?<\/offer>/g)
+
+    if (offerMatches) {
+      console.log(`Найдено ${offerMatches.length} товаров в XML`)
+
+      for (const offer of offerMatches) {
+        // Извлекаем атрибуты
+        const sku = offer.match(/sku="([^"]*)"/) ? offer.match(/sku="([^"]*)"/)?.[1] : ""
+        const group1 = offer.match(/group1="([^"]*)"/) ? offer.match(/group1="([^"]*)"/)?.[1] : ""
+        const group2 = offer.match(/group2="([^"]*)"/) ? offer.match(/group2="([^"]*)"/)?.[1] : ""
+
+        // Извлекаем содержимое тегов
+        const nameMatch = offer.match(/<name>(.*?)<\/name>/)
+        const stockMatch = offer.match(/<ostatok>(.*?)<\/ostatok>/)
+        const priceMatch = offer.match(/<price>(.*?)<\/price>/)
+
+        const name = nameMatch ? nameMatch[1] : ""
+        const stockText = stockMatch ? stockMatch[1] : "0"
+        const priceText = priceMatch ? priceMatch[1] : "0"
+
+        if (sku && name) {
+          products.push({
+            sku,
+            name,
+            category1: group1 || "",
+            category2: group2 || "",
+            stock: Number.parseFloat(stockText.replace(/\s/g, "").replace(",", ".")) || 0,
+            price: Number.parseFloat(priceText.replace(/\s/g, "").replace(",", ".")) || 0,
+          })
+        }
+      }
+    } else {
+      console.log("Теги <offer> не найдены в XML")
+    }
+  } catch (error) {
+    console.error("Ошибка парсинга XML:", error)
+  }
+
+  console.log(`Обработано ${products.length} товаров`)
+  return products
+}
 
 export async function POST(request: NextRequest) {
   try {
+    console.log("Получен запрос на загрузку XML")
+
     const formData = await request.formData()
-    const file = formData.get("file") as File
+    const file = formData.get("xmlFile") as File
 
     if (!file) {
+      console.log("Файл не найден в запросе")
       return NextResponse.json({ error: "Файл не найден" }, { status: 400 })
     }
 
-    const xmlText = await file.text()
-    const parser = new DOMParser()
-    const xmlDoc = parser.parseFromString(xmlText, "text/xml")
+    console.log(`Получен файл: ${file.name}, размер: ${file.size} байт`)
 
-    const offers = xmlDoc.getElementsByTagName("offer")
-    let importedCount = 0
+    const xmlText = await file.text()
+    console.log(`Содержимое файла прочитано, длина: ${xmlText.length} символов`)
+
+    const products = parseXML(xmlText)
+
+    if (products.length === 0) {
+      return NextResponse.json(
+        {
+          error: "В XML файле не найдено товаров для импорта",
+          xmlPreview: xmlText.substring(0, 500) + "...",
+        },
+        { status: 400 },
+      )
+    }
 
     // Начинаем транзакцию
-    await query("BEGIN")
+    const client = await pool.connect()
 
     try {
-      for (let i = 0; i < offers.length; i++) {
-        const offer = offers[i]
-        const sku = offer.getAttribute("sku")
-        const group1 = offer.getAttribute("group1") || ""
-        const group2 = offer.getAttribute("group2") || ""
+      await client.query("BEGIN")
 
-        const name = offer.getElementsByTagName("name")[0]?.textContent || ""
-        const priceText = offer.getElementsByTagName("price")[0]?.textContent || "0"
-        const stockText = offer.getElementsByTagName("ostatok")[0]?.textContent || "0"
+      let importedCount = 0
+      let errorCount = 0
 
-        if (!sku || !name) continue
+      for (const product of products) {
+        try {
+          await client.query(
+            `
+            INSERT INTO products (sku, name, category1, category2, price, stock, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, NOW())
+            ON CONFLICT (sku) 
+            DO UPDATE SET 
+              name = EXCLUDED.name,
+              category1 = EXCLUDED.category1,
+              category2 = EXCLUDED.category2,
+              price = EXCLUDED.price,
+              stock = EXCLUDED.stock,
+              updated_at = NOW()
+          `,
+            [product.sku, product.name, product.category1, product.category2, product.price, product.stock],
+          )
 
-        const price = Number.parseFloat(priceText.replace(/\s/g, "")) || 0
-        const stock = Number.parseFloat(stockText) || 0
-
-        // Upsert товара
-        await query(
-          `
-          INSERT INTO products (sku, name, category1, category2, price, stock)
-          VALUES ($1, $2, $3, $4, $5, $6)
-          ON CONFLICT (sku) 
-          DO UPDATE SET 
-            name = EXCLUDED.name,
-            category1 = EXCLUDED.category1,
-            category2 = EXCLUDED.category2,
-            price = EXCLUDED.price,
-            stock = EXCLUDED.stock,
-            updated_at = CURRENT_TIMESTAMP
-        `,
-          [sku, name, group1, group2, price, stock],
-        )
-
-        importedCount++
+          importedCount++
+        } catch (error) {
+          console.error(`Ошибка сохранения товара ${product.sku}:`, error)
+          errorCount++
+        }
       }
 
-      await query("COMMIT")
+      await client.query("COMMIT")
+
+      // Логирование
+      try {
+        await client.query(
+          `
+          INSERT INTO import_logs (filename, products_imported, status, error_message, created_at)
+          VALUES ($1, $2, $3, $4, NOW())
+        `,
+          [
+            file.name,
+            importedCount,
+            errorCount > 0 ? "partial" : "success",
+            errorCount > 0 ? `Ошибок: ${errorCount}` : null,
+          ],
+        )
+      } catch (logError) {
+        console.error("Ошибка записи лога:", logError)
+      }
+
+      // Получаем обновленный список товаров
+      const result = await client.query("SELECT * FROM products ORDER BY updated_at DESC")
+
       return NextResponse.json({
         success: true,
         message: `Успешно импортировано ${importedCount} товаров`,
+        count: importedCount,
+        errors: errorCount,
+        products: result.rows,
       })
     } catch (error) {
-      await query("ROLLBACK")
+      await client.query("ROLLBACK")
       throw error
+    } finally {
+      client.release()
     }
   } catch (error) {
     console.error("XML upload error:", error)
-    return NextResponse.json({ error: "Ошибка импорта XML" }, { status: 500 })
+    return NextResponse.json(
+      {
+        error: "Ошибка импорта XML: " + (error as Error).message,
+      },
+      { status: 500 },
+    )
   }
 }

@@ -3,69 +3,50 @@ version: '3.8'
 services:
   app:
     build: .
-    container_name: apelsin-app
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://apelsin_user:apelsin_password@db:5432/apelsin_db
       - JWT_SECRET=K8mN9pQ2rS5tU7vW0xY3zA6bC9dE2fG5hI8jK1lM4nO7pQ0rS3tU6vW9xY2zA5bC
-      - FTP_HOST=ftp
+      - FTP_HOST=localhost
       - FTP_PORT=21
       - FTP_USER=apelsin_ftp
-      - FTP_PASSWORD=ftp_password_123
+      - FTP_PASSWORD=apelsin_ftp_pass
       - FTP_DIRECTORY=/ftp/xml
     depends_on:
       - db
-      - ftp
-    restart: unless-stopped
     volumes:
       - ./uploads:/app/uploads
-      - ./logs:/app/logs
+      - ./ftp:/ftp
+    restart: unless-stopped
 
   db:
-    image: postgres:15-alpine
-    container_name: apelsin-db
+    image: postgres:15
     environment:
       - POSTGRES_DB=apelsin_db
       - POSTGRES_USER=apelsin_user
       - POSTGRES_PASSWORD=apelsin_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init-database.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./scripts:/docker-entrypoint-initdb.d
     ports:
       - "5432:5432"
     restart: unless-stopped
 
   ftp:
     image: stilliard/pure-ftpd
-    container_name: apelsin-ftp
     ports:
       - "21:21"
       - "30000-30009:30000-30009"
     environment:
-      - PUBLICHOST=localhost
+      - PUBLICHOST=37.233.85.193
       - FTP_USER_NAME=apelsin_ftp
-      - FTP_USER_PASS=ftp_password_123
+      - FTP_USER_PASS=apelsin_ftp_pass
       - FTP_USER_HOME=/ftp
     volumes:
-      - ftp_data:/ftp
-      - ./ftp-config:/etc/pure-ftpd
-    restart: unless-stopped
-
-  nginx:
-    image: nginx:alpine
-    container_name: apelsin-nginx
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
-      - ./ssl:/etc/nginx/ssl
-    depends_on:
-      - app
+      - ./ftp:/ftp
     restart: unless-stopped
 
 volumes:
   postgres_data:
-  ftp_data:

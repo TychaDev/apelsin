@@ -8,11 +8,11 @@ import Image from "next/image"
 
 interface SidebarProps {
   activeTab: string
-  setActiveTab: (tab: string) => void
+  onTabChange: (tab: string) => void
   onLogout: () => void
 }
 
-export function Sidebar({ activeTab, setActiveTab, onLogout }: SidebarProps) {
+export function Sidebar({ activeTab, onTabChange, onLogout }: SidebarProps) {
   const { t } = useLanguage()
 
   const menuItems = [
@@ -51,7 +51,7 @@ export function Sidebar({ activeTab, setActiveTab, onLogout }: SidebarProps) {
               className={`w-full justify-start transition-all duration-200 ${
                 activeTab === item.id ? "elegant-button text-white" : "hover:bg-red-900/20 hover:text-red-300"
               }`}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => onTabChange(item.id)}
             >
               <Icon className="mr-2 h-4 w-4" />
               {item.label}

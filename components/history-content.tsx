@@ -10,12 +10,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 interface HistoryOrder {
   id: string
-  customer: string
-  phone: string
+  customer_name?: string
+  customer_phone?: string
   total: number
-  payment: "Halyk Bank" | "Kaspi Bank" | "Наличные"
+  payment_method?: string
   status: "completed" | "cancelled"
-  date: string
+  created_at: string
   items: Array<{ name: string; quantity: number; price: number }>
 }
 
@@ -34,18 +34,29 @@ export function HistoryContent() {
       const response = await fetch("/api/history")
       if (response.ok) {
         const data = await response.json()
-        setHistoryOrders(data.orders)
+        console.log("History data:", data)
+        setHistoryOrders(data.orders || [])
+      } else {
+        console.error("Failed to fetch history:", response.status)
+        setHistoryOrders([])
       }
     } catch (error) {
       console.error("Ошибка загрузки истории:", error)
+      setHistoryOrders([])
     } finally {
       setLoading(false)
     }
   }
 
-  const filteredOrders = historyOrders.filter(
-    (order) => order.phone.includes(searchPhone) || order.customer.toLowerCase().includes(searchPhone.toLowerCase()),
-  )
+  const filteredOrders = historyOrders.filter((order) => {
+    if (!order) return false
+
+    const phone = order.customer_phone || ""
+    const customer = order.customer_name || ""
+    const search = searchPhone.toLowerCase()
+
+    return phone.includes(searchPhone) || customer.toLowerCase().includes(search)
+  })
 
   const getStatusBadge = (status: HistoryOrder["status"]) => {
     return status === "completed" ? (
@@ -55,14 +66,16 @@ export function HistoryContent() {
     )
   }
 
-  const getPaymentBadge = (payment: HistoryOrder["payment"]) => {
-    const colors = {
+  const getPaymentBadge = (payment?: string) => {
+    if (!payment) return <Badge variant="secondary">Не указано</Badge>
+
+    const colors: Record<string, string> = {
       "Kaspi Bank": "bg-red-600",
       "Halyk Bank": "bg-blue-600",
       Наличные: "bg-green-600",
     }
 
-    return <Badge className={`${colors[payment]} text-white`}>{payment}</Badge>
+    return <Badge className={`${colors[payment] || "bg-gray-600"} text-white`}>{payment}</Badge>
   }
 
   if (loading) {
@@ -114,19 +127,25 @@ export function HistoryContent() {
               {filteredOrders.map((order) => (
                 <TableRow key={order.id}>
                   <TableCell className="font-medium">#{order.id}</TableCell>
-                  <TableCell>{new Date(order.date).toLocaleDateString("ru-RU")}</TableCell>
-                  <TableCell>{order.customer}</TableCell>
-                  <TableCell>{order.phone}</TableCell>
-                  <TableCell>{order.total.toLocaleString()} ₸</TableCell>
-                  <TableCell>{getPaymentBadge(order.payment)}</TableCell>
+                  <TableCell>
+                    {order.created_at ? new Date(order.created_at).toLocaleDateString("ru-RU") : "Не указана"}
+                  </TableCell>
+                  <TableCell>{order.customer_name || "Не указан"}</TableCell>
+                  <TableCell>{order.customer_phone || "Не указан"}</TableCell>
+                  <TableCell>{(order.total || 0).toLocaleString()} ₸</TableCell>
+                  <TableCell>{getPaymentBadge(order.payment_method)}</TableCell>
                   <TableCell>{getStatusBadge(order.status)}</TableCell>
                   <TableCell>
                     <div className="text-xs space-y-1">
-                      {order.items.map((item, index) => (
-                        <div key={index}>
-                          {item.name} x{item.quantity}
-                        </div>
-                      ))}
+                      {order.items && order.items.length > 0 ? (
+                        order.items.map((item, index) => (
+                          <div key={index}>
+                            {item.name || "Неизвестный товар"} x{item.quantity || 0}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-muted-foreground">Нет товаров</div>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

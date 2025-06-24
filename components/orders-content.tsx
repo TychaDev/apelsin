@@ -32,13 +32,20 @@ export function OrdersContent() {
       const response = await fetch("/api/orders")
       if (response.ok) {
         const data = await response.json()
-        setOrders(data.orders)
+        setOrders(data.orders || [])
       }
     } catch (error) {
       console.error("Ошибка загрузки заказов:", error)
     } finally {
       setLoading(false)
     }
+  }
+
+  const formatNumber = (num: number | undefined | null): string => {
+    if (num === undefined || num === null || isNaN(num)) {
+      return "0"
+    }
+    return num.toLocaleString()
   }
 
   const updateOrderStatus = async (orderId: string, newStatus: Order["status"]) => {
@@ -76,7 +83,7 @@ export function OrdersContent() {
       cancelled: { label: "Отменен", className: "status-badge status-cancelled" },
     }
 
-    const config = statusConfig[status]
+    const config = statusConfig[status] || { label: "Неизвестно", className: "status-badge" }
     return <span className={config.className}>{config.label}</span>
   }
 
@@ -87,7 +94,7 @@ export function OrdersContent() {
       Наличные: "status-badge payment-cash",
     }
 
-    return <span className={paymentConfig[payment]}>{payment}</span>
+    return <span className={paymentConfig[payment] || "status-badge"}>{payment || "Не указано"}</span>
   }
 
   if (loading) {
@@ -101,15 +108,15 @@ export function OrdersContent() {
     )
   }
 
+  const activeOrders = orders.filter((order) => !["completed", "cancelled"].includes(order.status))
+
   return (
     <div className="p-6">
       <h1 className="text-3xl font-bold mb-6 glow-text">Управление заказами</h1>
 
       <Card className="elegant-card">
         <CardHeader>
-          <CardTitle>
-            Активные заказы ({orders.filter((order) => !["completed", "cancelled"].includes(order.status)).length})
-          </CardTitle>
+          <CardTitle>Активные заказы ({activeOrders.length})</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
@@ -125,38 +132,36 @@ export function OrdersContent() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {orders
-                .filter((order) => !["completed", "cancelled"].includes(order.status))
-                .map((order) => (
-                  <TableRow key={order.id} className="table-row-hover">
-                    <TableCell className="font-medium">#{order.id}</TableCell>
-                    <TableCell>{order.customer}</TableCell>
-                    <TableCell>{order.phone}</TableCell>
-                    <TableCell>{order.total.toLocaleString()} ₸</TableCell>
-                    <TableCell>{getPaymentBadge(order.payment)}</TableCell>
-                    <TableCell>{getStatusBadge(order.status)}</TableCell>
-                    <TableCell>
-                      <Select
-                        value={order.status}
-                        onValueChange={(value) => updateOrderStatus(order.id, value as Order["status"])}
-                      >
-                        <SelectTrigger className="w-40">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="assembly">В сборке</SelectItem>
-                          <SelectItem value="waiting">Ожидание курьера</SelectItem>
-                          <SelectItem value="delivery">Курьер в пути</SelectItem>
-                          <SelectItem value="completed">Выполнен</SelectItem>
-                          <SelectItem value="cancelled">Отменен</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                  </TableRow>
-                ))}
+              {activeOrders.map((order) => (
+                <TableRow key={order.id} className="table-row-hover">
+                  <TableCell className="font-medium">#{order.id || "N/A"}</TableCell>
+                  <TableCell>{order.customer || "Не указан"}</TableCell>
+                  <TableCell>{order.phone || "Не указан"}</TableCell>
+                  <TableCell>{formatNumber(order.total)} ₸</TableCell>
+                  <TableCell>{getPaymentBadge(order.payment)}</TableCell>
+                  <TableCell>{getStatusBadge(order.status)}</TableCell>
+                  <TableCell>
+                    <Select
+                      value={order.status}
+                      onValueChange={(value) => updateOrderStatus(order.id, value as Order["status"])}
+                    >
+                      <SelectTrigger className="w-40">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="assembly">В сборке</SelectItem>
+                        <SelectItem value="waiting">Ожидание курьера</SelectItem>
+                        <SelectItem value="delivery">Курьер в пути</SelectItem>
+                        <SelectItem value="completed">Выполнен</SelectItem>
+                        <SelectItem value="cancelled">Отменен</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
-          {orders.filter((order) => !["completed", "cancelled"].includes(order.status)).length === 0 && (
+          {activeOrders.length === 0 && (
             <div className="text-center py-8 text-muted-foreground">Нет активных заказов</div>
           )}
         </CardContent>

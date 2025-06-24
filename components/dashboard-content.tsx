@@ -1,66 +1,114 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { useLanguage } from "@/components/language-provider"
-import { ShoppingCart, Package, TrendingUp, Users } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { useToast } from "@/hooks/use-toast"
+import {
+  ShoppingCart,
+  Package,
+  TrendingUp,
+  Clock,
+  RefreshCw,
+  Database,
+  FileText,
+  CheckCircle,
+  AlertCircle,
+} from "lucide-react"
 
 interface DashboardStats {
   totalOrders: number
   activeOrders: number
+  totalRevenue: number
   totalProducts: number
-  revenue: number
-}
-
-interface RecentOrder {
-  id: string
-  phone: string
-  total: number
-  status: string
-}
-
-interface PopularProduct {
-  name: string
-  sales: number
-  revenue: number
+  totalStock: number
+  inStockProducts: number
+  outOfStockProducts: number
+  totalImports: number
+  totalImportedProducts: number
+  lastImport: string | null
 }
 
 export function DashboardContent() {
-  const { t } = useLanguage()
-  const [stats, setStats] = useState<DashboardStats | null>(null)
-  const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([])
-  const [popularProducts, setPopularProducts] = useState<PopularProduct[]>([])
+  const { toast } = useToast()
+  const [stats, setStats] = useState<DashboardStats>({
+    totalOrders: 0,
+    activeOrders: 0,
+    totalRevenue: 0,
+    totalProducts: 0,
+    totalStock: 0,
+    inStockProducts: 0,
+    outOfStockProducts: 0,
+    totalImports: 0,
+    totalImportedProducts: 0,
+    lastImport: null,
+  })
   const [loading, setLoading] = useState(true)
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
 
-  useEffect(() => {
-    fetchDashboardData()
-  }, [])
-
-  const fetchDashboardData = async () => {
+  const fetchStats = async () => {
     try {
+      console.log("Fetching dashboard stats...")
       const response = await fetch("/api/dashboard/stats")
-      if (response.ok) {
-        const data = await response.json()
+      const data = await response.json()
+
+      if (data.success) {
         setStats(data.stats)
-        setRecentOrders(data.recentOrders)
-        setPopularProducts(data.popularProducts)
+        setLastUpdate(new Date())
+        console.log("Dashboard stats updated:", data.stats)
+      } else {
+        console.error("Failed to fetch stats:", data.error)
       }
     } catch (error) {
-      console.error("Ошибка загрузки данных:", error)
+      console.error("Error fetching stats:", error)
+      toast({
+        title: "Ошибка",
+        description: "Не удалось загрузить статистику",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }
   }
 
-  if (loading) {
+  const handleRefresh = async () => {
+    setLoading(true)
+    await fetchStats()
+    toast({
+      title: "Обновлено",
+      description: "Статистика обновлена",
+    })
+  }
+
+  useEffect(() => {
+    fetchStats()
+
+    // Автообновление каждые 30 секунд
+    const interval = setInterval(fetchStats, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const formatNumber = (num: number): string => {
+    return num.toLocaleString()
+  }
+
+  const formatCurrency = (amount: number): string => {
+    return `${amount.toLocaleString()} ₸`
+  }
+
+  const formatDate = (dateString: string | null): string => {
+    if (!dateString) return "Никогда"
+    return new Date(dateString).toLocaleString("ru-RU")
+  }
+
+  if (loading && stats.totalOrders === 0) {
     return (
       <div className="p-6">
-        <div className="animate-pulse space-y-6">
-          <div className="h-8 bg-gray-700 rounded w-64"></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-32 bg-gray-700 rounded"></div>
-            ))}
+        <div className="flex items-center justify-center h-96">
+          <div className="text-center">
+            <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-red-400" />
+            <p className="text-muted-foreground">Загрузка статистики...</p>
           </div>
         </div>
       </div>
@@ -69,100 +117,137 @@ export function DashboardContent() {
 
   return (
     <div className="p-6">
-      <h1 className="text-3xl font-bold mb-6 glow-text">{t("dashboard.title")}</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-3xl font-bold elegant-text">Панель управления</h1>
+        <div className="flex items-center gap-4">
+          <div className="text-sm text-muted-foreground">Обновлено: {lastUpdate.toLocaleTimeString("ru-RU")}</div>
+          <Button onClick={handleRefresh} variant="outline" size="sm" disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            Обновить
+          </Button>
+        </div>
+      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <Card className="stats-card fade-in-up">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        {/* Заказы */}
+        <Card className="elegant-card">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-300">Всего заказов</CardTitle>
-            <ShoppingCart className="h-4 w-4 text-red-400" />
+            <CardTitle className="text-sm font-medium">Всего заказов</CardTitle>
+            <ShoppingCart className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-white">{stats?.totalOrders || 0}</div>
+            <div className="text-2xl font-bold">{formatNumber(stats.totalOrders)}</div>
+            <p className="text-xs text-muted-foreground">
+              Активных: <Badge variant="secondary">{formatNumber(stats.activeOrders)}</Badge>
+            </p>
           </CardContent>
         </Card>
 
-        <Card className="stats-card fade-in-up" style={{ animationDelay: "0.1s" }}>
+        {/* Товары */}
+        <Card className="elegant-card">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-300">Активные заказы</CardTitle>
-            <Users className="h-4 w-4 text-red-400" />
+            <CardTitle className="text-sm font-medium">Всего товаров</CardTitle>
+            <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-white">{stats?.activeOrders || 0}</div>
+            <div className="text-2xl font-bold">{formatNumber(stats.totalProducts)}</div>
+            <p className="text-xs text-muted-foreground">
+              Общий остаток: <Badge variant="outline">{formatNumber(stats.totalStock)}</Badge>
+            </p>
           </CardContent>
         </Card>
 
-        <Card className="stats-card fade-in-up" style={{ animationDelay: "0.2s" }}>
+        {/* Выручка */}
+        <Card className="elegant-card">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-300">Всего товаров</CardTitle>
-            <Package className="h-4 w-4 text-red-400" />
+            <CardTitle className="text-sm font-medium">Выручка</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-white">{stats?.totalProducts || 0}</div>
+            <div className="text-2xl font-bold">{formatCurrency(stats.totalRevenue)}</div>
+            <p className="text-xs text-muted-foreground">За все время</p>
           </CardContent>
         </Card>
 
-        <Card className="stats-card fade-in-up" style={{ animationDelay: "0.3s" }}>
+        {/* Импорты */}
+        <Card className="elegant-card">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-300">Выручка</CardTitle>
-            <TrendingUp className="h-4 w-4 text-red-400" />
+            <CardTitle className="text-sm font-medium">Импорты (24ч)</CardTitle>
+            <Database className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-white">{stats?.revenue?.toLocaleString() || 0} ₸</div>
+            <div className="text-2xl font-bold">{formatNumber(stats.totalImports)}</div>
+            <p className="text-xs text-muted-foreground">
+              Товаров: <Badge variant="secondary">{formatNumber(stats.totalImportedProducts)}</Badge>
+            </p>
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Детальная статистика */}
+      <div className="grid gap-6 md:grid-cols-2 mt-6">
+        {/* Статистика товаров */}
         <Card className="elegant-card">
           <CardHeader>
-            <CardTitle className="elegant-text">Последние заказы</CardTitle>
-            <CardDescription>Недавние заказы в системе</CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              Статистика товаров
+            </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {recentOrders.length > 0 ? (
-                recentOrders.map((order) => (
-                  <div key={order.id} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div>
-                      <p className="font-medium">Заказ #{order.id}</p>
-                      <p className="text-sm text-muted-foreground">{order.phone}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-medium">{order.total.toLocaleString()} ₸</p>
-                      <p className="text-sm text-green-600">{order.status}</p>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-muted-foreground text-center py-4">Нет данных</p>
-              )}
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-green-400" />
+                <span className="text-sm">В наличии</span>
+              </div>
+              <Badge variant="secondary">{formatNumber(stats.inStockProducts)}</Badge>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-red-400" />
+                <span className="text-sm">Нет в наличии</span>
+              </div>
+              <Badge variant="destructive">{formatNumber(stats.outOfStockProducts)}</Badge>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Database className="h-4 w-4 text-blue-400" />
+                <span className="text-sm">Общий остаток</span>
+              </div>
+              <Badge variant="outline">{formatNumber(stats.totalStock)} шт</Badge>
             </div>
           </CardContent>
         </Card>
 
+        {/* Последние импорты */}
         <Card className="elegant-card">
           <CardHeader>
-            <CardTitle className="elegant-text">Популярные товары</CardTitle>
-            <CardDescription>Топ продаж за неделю</CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Импорт данных
+            </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {popularProducts.length > 0 ? (
-                popularProducts.map((product, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div>
-                      <p className="font-medium">{product.name}</p>
-                      <p className="text-sm text-muted-foreground">{product.sales} продаж</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-medium">{product.revenue.toLocaleString()} ₸</p>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-muted-foreground text-center py-4">Нет данных</p>
-              )}
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm">Последний импорт</span>
+              </div>
+              <div className="text-sm text-muted-foreground">{formatDate(stats.lastImport)}</div>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Database className="h-4 w-4 text-green-400" />
+                <span className="text-sm">Импортов за 24ч</span>
+              </div>
+              <Badge variant="secondary">{formatNumber(stats.totalImports)}</Badge>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Package className="h-4 w-4 text-blue-400" />
+                <span className="text-sm">Товаров импортировано</span>
+              </div>
+              <Badge variant="outline">{formatNumber(stats.totalImportedProducts)}</Badge>
             </div>
           </CardContent>
         </Card>

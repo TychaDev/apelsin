@@ -4,14 +4,15 @@ import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useLanguage } from "@/components/language-provider"
 import { Languages } from "lucide-react"
+import type { Language } from "@/lib/translations"
 
 export function LanguageSelector() {
   const { language, setLanguage } = useLanguage()
 
-  const languages = [
+  const languages: { code: Language; name: string }[] = [
     { code: "ru", name: "Русский" },
     { code: "en", name: "English" },
-    { code: "kz", name: "Қазақша" },
+    { code: "kk", name: "Қазақша" },
   ]
 
   return (
@@ -26,7 +27,7 @@ export function LanguageSelector() {
         {languages.map((lang) => (
           <DropdownMenuItem
             key={lang.code}
-            onClick={() => setLanguage(lang.code as any)}
+            onClick={() => setLanguage(lang.code)}
             className={language === lang.code ? "bg-red-600/20" : ""}
           >
             {lang.name}
